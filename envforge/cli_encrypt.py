@@ -33,6 +33,13 @@ def cmd_encrypt_snapshot(args: argparse.Namespace) -> None:
         return
 
     key = get_key_from_env()
+    if key is None:
+        print(
+            f"No encryption key found. Set the {ENVFORGE_KEY_ENV} environment variable.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     snap.variables = encrypt_values(snap.variables, key)
     store.save(snap)
     print(f"Snapshot '{args.name}' encrypted successfully.")
@@ -51,6 +58,13 @@ def cmd_decrypt_snapshot(args: argparse.Namespace) -> None:
         return
 
     key = get_key_from_env()
+    if key is None:
+        print(
+            f"No encryption key found. Set the {ENVFORGE_KEY_ENV} environment variable.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     snap.variables = decrypt_values(snap.variables, key)
     store.save(snap)
     print(f"Snapshot '{args.name}' decrypted successfully.")
