@@ -1,108 +1,135 @@
-"""Command-line interface for envforge."""
+"""Main CLI entry point for envforge."""
 
+from __future__ import annotations
+
+import argparse
 import os
 import sys
-import argparse
 
 from envforge.snapshot import Snapshot
 from envforge.store import SnapshotStore
 
 
-def get_store() -> SnapshotStore:
-    store_path = os.environ.get("ENVFORGE_STORE", os.path.expanduser("~/.envforge/snapshots.json"))
-    return SnapshotStore(store_path)
+DEFAULT_STORE = os.path.expanduser("~/.envforge/store.json")
 
 
-def cmd_capture(args: argparse.Namespace) -> int:
-    store = get_store()
+def get_store(args: argparse.Namespace) -> SnapshotStore:
+    path = getattr(args, "store", None) or DEFAULT_STORE
+    return SnapshotStore(path)
+
+
+def cmd_capture(args: argparse.Namespace) -> None:
+    store = get_store(args)
     keys = args.keys if args.keys else None
-    snapshot = Snapshot.capture(name=args.name, keys=keys, description=args.description)
-    store.save(snapshot)
-    print(f"Snapshot '{args.name}' captured ({len(snapshot.variables)} variables).")
-    return 0
+    snap = Snapshot.capture(args.name, keys=keys)
+    store.save(snap)
+    count = len(snap.vars)
+    print(f"Captured snapshot {args.name!r} with {count} variable(s).")
 
 
-def cmd_apply(args: argparse.Namespace) -> int:
-    store = get_store()
-    snapshot = store.get(args.name)
-    if snapshot is None:
-        print(f"Error: snapshot '{args.name}' not found.", file=sys.stderr)
-        return 1
-    applied = snapshot.apply(overwrite=not args.no_overwrite)
-    print(f"Applied {applied} variable(s) from snapshot '{args.name}'.")
-    return 0
+def cmd_apply(args: argparse.Namespace) -> None:
+    store = get_store(args)
+    snap = store.get(args.name)
+    if snap is None:
+        print(f"Snapshot {args.name!r} not found.")
+        sys.exit(1)
+    overwrite = not args.no_overwrite
+    snap.apply(overwrite=overwrite)
+    print(f"Applied snapshot {args.name!r}.")
 
 
-def cmd_list(args: argparse.Namespace) -> int:
-    store = get_store()
-    snapshots = store.list()
-    if not snapshots:
-        print("No snapshots found.")
-        return 0
-    for name in snapshots:
-        snap = store.get(name)
-        desc = f" — {snap.description}" if snap and snap.description else ""
-        count = len(snap.variables) if snap else 0
-        print(f"  {name} ({count} vars){desc}")
-    return 0
+def cmd_list(args: argparse.Namespace) -> None:
+    store = get_store(args)
+    names = store.list()
+    if not names:
+        print("(no snapshots)")
+        return
+    for name in names:
+        print(name)
 
 
-def cmd_delete(args: argparse.Namespace) -> int:
-    store = get_store()
-    removed = store.delete(args.name)
-    if not removed:
-        print(f"Error: snapshot '{args.name}' not found.", file=sys.stderr)
-        return 1
-    print(f"Snapshot '{args.name}' deleted.")
-    return 0
+def cmd_delete(args: argparse.Namespace) -> None:
+    store = get_store(args)
+    try:
+        store.delete(args.name)
+        print(f"Deleted snapshot {args.name!r}.")
+    except KeyError:
+        print(f"Snapshot {args.name!r} not found.")
+        sys.exit(1)
 
 
-def cmd_show(args: argparse.Namespace) -> int:
-    store = get_store()
-    snapshot = store.get(args.name)
-    if snapshot is None:
-        print(f"Error: snapshot '{args.name}' not found.", file=sys.stderr)
-        return 1
-    print(f"Snapshot: {snapshot.name}")
-    if snapshot.description:
-        print(f"Description: {snapshot.description}")
-    print(f"Created: {snapshot.created_at}")
-    print(f"Variables ({len(snapshot.variables)}):")
-    for key, value in sorted(snapshot.variables.items()):
-        display = value if not args.mask else "***"
-        print(f"  {key}={display}")
-    return 0
+def cmd_show(args: argparse.Namespace) -> None:
+    store = get_store(args)
+    snap = store.get(args.name)
+    if snap is None:
+        print(f"Snapshot {args.name!r} not found.")
+        sys.exit(1)
+    for k, v in sorted(snap.vars.items()):
+        print(f"{k}={v}")
+
+
+def cmd_export(args: argparse.Namespace) -> None:
+    from envforge.export import to_shell_export
+
+    store = get_store(args)
+    snap = store.get(args.name)
+    if snap is None:
+        print(f"Snapshot {args.name!r} not found.")
+        sys.exit(1)
+    shell = getattr(args, "shell", "bash")
+    print(to_shell_export(snap, shell=shell))
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="envforge",
-        description="Snapshot and restore environment variable sets.",
+        prog="envforge", description="Snapshot and restore environment variables."
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--store", default=None, help="Path to store file")
+    subparsers = parser.add_subparsers(dest="command")
 
-    p_capture = sub.add_parser("capture", help="Capture current environment variables.")
-    p_capture.add_argument("name", help="Name for the snapshot.")
-    p_capture.add_argument("--keys", nargs="+", metavar="KEY", help="Specific keys to capture.")
-    p_capture.add_argument("--description", "-d", default="", help="Optional description.")
+    p_capture = subparsers.add_parser("capture", help="Capture current environment")
+    p_capture.add_argument("name", help="Snapshot name")
+    p_capture.add_argument("keys", nargs="*", help="Specific keys to capture")
     p_capture.set_defaults(func=cmd_capture)
 
-    p_apply = sub.add_parser("apply", help="Apply a snapshot to the current environment.")
-    p_apply.add_argument("name", help="Name of the snapshot to apply.")
-    p_apply.add_argument("--no-overwrite", action="store_true", help="Skip variables already set.")
+    p_apply = subparsers.add_parser("apply", help="Apply a snapshot")
+    p_apply.add_argument("name", help="Snapshot name")
+    p_apply.add_argument("--no-overwrite", action="store_true")
     p_apply.set_defaults(func=cmd_apply)
 
-    p_list = sub.add_parser("list", help="List all saved snapshots.")
+    p_list = subparsers.add_parser("list", help="List snapshots")
     p_list.set_defaults(func=cmd_list)
 
-    p_delete = sub.add_parser("delete", help="Delete a snapshot.")
-    p_delete.add_argument("name", help="Name of the snapshot to delete.")
+    p_delete = subparsers.add_parser("delete", help="Delete a snapshot")
+    p_delete.add_argument("name", help="Snapshot name")
     p_delete.set_defaults(func=cmd_delete)
 
-    p_show = sub.add_parser("show", help="Show details of a snapshot.")
-    p_show.add_argument("name", help="Name of the snapshot to show.")
-    p_show.add_argument("--mask", action="store_true", help="Mask variable values.")
+    p_show = subparsers.add_parser("show", help="Show snapshot variables")
+    p_show.add_argument("name", help="Snapshot name")
     p_show.set_defaults(func=cmd_show)
+
+    p_export = subparsers.add_parser("export", help="Export snapshot as shell script")
+    p_export.add_argument("name", help="Snapshot name")
+    p_export.add_argument("--shell", default="bash", choices=["bash", "fish", "powershell"])
+    p_export.set_defaults(func=cmd_export)
+
+    from envforge.cli_encrypt import register_encrypt_commands
+    from envforge.cli_tags import register_tag_commands
+    from envforge.cli_history import register_history_commands
+    from envforge.cli_merge import register_merge_commands
+    from envforge.cli_template import register_template_commands
+    from envforge.cli_schedule import register_schedule_commands
+    from envforge.cli_compare import register_compare_commands
+    from envforge.cli_pin import register_pin_commands
+
+    register_encrypt_commands(subparsers)
+    register_tag_commands(subparsers)
+    register_history_commands(subparsers)
+    register_merge_commands(subparsers)
+    register_template_commands(subparsers)
+    register_schedule_commands(subparsers)
+    register_compare_commands(subparsers)
+    register_pin_commands(subparsers)
 
     return parser
 
@@ -110,7 +137,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    sys.exit(args.func(args))
+    if not hasattr(args, "func"):
+        parser.print_help()
+        sys.exit(0)
+    args.func(args)
 
 
 if __name__ == "__main__":
