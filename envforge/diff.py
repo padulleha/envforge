@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Dict, List, TYPE_CHECKING
 
@@ -89,11 +90,24 @@ def diff_snapshot_with_env(snapshot: "Snapshot", env: dict | None = None) -> Sna
         env: Optional dict to use as the environment; defaults to os.environ.
 
     Returns:
-        A SnapshotDiff describing differences between the snapshot and environment.
+        A SnapshotDiff describing differences between the snapshot and the
+        given environment. Keys present only in the snapshot are reported as
+        removed; keys present only in the environment are reported as added.
     """
-    import os
-    from envforge.snapshot import Snapshot
+    if env is None:
+        env = dict(os.environ)
 
-    current_env = env if env is not None else dict(os.environ)
-    current_snapshot = Snapshot(name="__current__", variables=current_env)
-    return diff_snapshots(snapshot, current_snapshot)
+    snap_vars = snapshot.variables
+    snap_keys = set(snap_vars)
+    env_keys = set(env)
+
+    added = {k: env[k] for k in env_keys - snap_keys}
+    removed = {k: snap_vars[k] for k in snap_keys - env_keys}
+    changed = {
+        k: (snap_vars[k], env[k])
+        for k in snap_keys & env_keys
+        if snap_vars[k] != env[k]
+    }
+    unchanged = [k for k in snap_keys & env_keys if snap_vars[k] == env[k]]
+
+    return SnapshotDiff(added=added, removed=removed, changed=changed, unchanged=unchanged)
