@@ -57,6 +57,25 @@ def get_lock(locks: List[LockedSnapshot], name: str) -> Optional[LockedSnapshot]
     return None
 
 
+def assert_not_locked(locks: List[LockedSnapshot], name: str) -> None:
+    """Raise a ``RuntimeError`` if *name* is currently locked.
+
+    Intended as a guard at the start of any operation that would mutate or
+    delete a snapshot, so callers don't have to repeat the check-and-raise
+    pattern inline.
+
+    Raises:
+        RuntimeError: with a message that includes the lock reason when one
+            is set.
+    """
+    lock = get_lock(locks, name)
+    if lock is not None:
+        msg = f"Snapshot '{name}' is locked and cannot be modified."
+        if lock.reason:
+            msg += f" Reason: {lock.reason}"
+        raise RuntimeError(msg)
+
+
 def format_locks(locks: List[LockedSnapshot]) -> str:
     if not locks:
         return "  (no locked snapshots)"
