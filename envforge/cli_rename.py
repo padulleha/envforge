@@ -8,7 +8,15 @@ from envforge.rename import RenameError, rename_snapshot
 
 
 def cmd_rename(args: argparse.Namespace, store) -> int:
-    """Handle the ``envforge rename <old> <new>`` command."""
+    """Handle the ``envforge rename <old> <new>`` command.
+
+    Returns 0 on success, 1 on failure.
+
+    Exits with an error message if:
+    - The source snapshot does not exist.
+    - The destination snapshot already exists and ``--overwrite`` was not given.
+    - Any other :class:`~envforge.rename.RenameError` is raised.
+    """
     try:
         result = rename_snapshot(
             store,
