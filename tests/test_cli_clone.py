@@ -85,6 +85,17 @@ def test_clone_with_tag_applies_tag(tmp_store):
     assert "prod" in (cloned.tags or [])
 
 
+def test_clone_does_not_modify_source(tmp_store):
+    """Cloning should leave the source snapshot completely unchanged."""
+    store, tmp_path = tmp_store
+    source_before = store.get("base")
+    args = _make_args(tmp_path, source="base", dest="copy", tag="v1")
+    cmd_clone(args)
+    source_after = store.get("base")
+    assert source_after.variables == source_before.variables
+    assert source_after.tags == source_before.tags
+
+
 def test_register_clone_commands_adds_subparser():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers()
