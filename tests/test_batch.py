@@ -57,6 +57,12 @@ def test_batch_result_str_empty():
     assert str(r) == "No operations performed"
 
 
+def test_batch_result_all_succeeded_empty():
+    """A result with no operations should not be considered all_succeeded."""
+    r = BatchResult()
+    assert r.all_succeeded is False
+
+
 # ---------------------------------------------------------------------------
 # batch_capture
 # ---------------------------------------------------------------------------
@@ -102,10 +108,11 @@ def test_batch_apply_sets_env(monkeypatch):
 
 
 def test_batch_apply_missing_snapshot():
+    """Applying a snapshot that does not exist should record a failure."""
     store = _FakeStore()
-    result = batch_apply(store, ["ghost"])
-    assert "ghost" in result.failed
-    assert not result.all_succeeded
+    result = batch_apply(store, ["nonexistent"])
+    assert "nonexistent" in result.failed
+    assert result.all_succeeded is False
 
 
 # ---------------------------------------------------------------------------
@@ -116,10 +123,21 @@ def test_batch_delete_removes_snapshots():
     store = _FakeStore({"d1": _snap("d1"), "d2": _snap("d2")})
     result = batch_delete(store, ["d1", "d2"])
     assert result.all_succeeded
-    assert "d1" in store.deleted and "d2" in store.deleted
+    assert "d1" in store.deleted
+    assert "d2" in store.deleted
 
 
-def test_batch_delete_missing_snapshot():
-    store = _FakeStore()
-    result = batch_delete(store, ["nope"])
-    assert "nope" in result.failed
+def test_batch_delete_partial_failure():
+    """A store error during delete should be captured as a failure."""
+    store = _FakeStore({"ok": _snap("ok"), "bad": _snap("bad")})
+    original_delete = store.delete
+    def _bad_delete(name):
+        if name == "bad":
+            raise OSError("permission denied")
+        original_delete(name)
+    store.delete = _bad_delete
+
+    result = batch_delete(store, ["ok", "bad"])
+    assert "ok" in result.succeeded
+    assert "bad" in result.failed
+    assert "permission denied" in result.errors["bad"]
