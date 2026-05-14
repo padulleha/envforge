@@ -39,11 +39,14 @@ def get_key_from_env() -> str:
 
 
 def encrypt_values(values: Dict[str, str], key: str) -> Dict[str, str]:
-    """Encrypt all values in a dict using the provided Fernet key."""
+    """Encrypt all values in a dict using the provided Fernet key.
+
+    Values that are already encrypted (prefixed with 'enc:') are left unchanged.
+    """
     _require_crypto()
     f = Fernet(key.encode() if isinstance(key, str) else key)
     return {
-        k: "enc:" + f.encrypt(v.encode()).decode()
+        k: v if v.startswith("enc:") else "enc:" + f.encrypt(v.encode()).decode()
         for k, v in values.items()
     }
 
@@ -67,3 +70,24 @@ def decrypt_values(values: Dict[str, str], key: str) -> Dict[str, str]:
 def is_encrypted(values: Dict[str, str]) -> bool:
     """Return True if any value in the dict appears to be encrypted."""
     return any(v.startswith("enc:") for v in values.values())
+
+
+def rotate_key(values: Dict[str, str], old_key: str, new_key: str) -> Dict[str, str]:
+    """Re-encrypt all encrypted values in a dict using a new key.
+
+    Decrypts values with the old key and re-encrypts them with the new key.
+    Plaintext values (without the 'enc:' prefix) are left unchanged.
+
+    Args:
+        values: Dict containing potentially encrypted values.
+        old_key: The Fernet key currently used to encrypt the values.
+        new_key: The new Fernet key to encrypt the values with.
+
+    Returns:
+        A new dict with all previously encrypted values re-encrypted under the new key.
+    """
+    decrypted = decrypt_values(values, old_key)
+    return encrypt_values(
+        {k: v for k, v in decrypted.items() if values.get(k, "").startswith("enc:")},
+        new_key,
+    ) | {k: v for k, v in decrypted.items() if not values.get(k, "").startswith("enc:")}
