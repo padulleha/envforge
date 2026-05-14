@@ -14,6 +14,16 @@ class UnsupportedFormatError(Exception):
     pass
 
 
+def _resolve_format(path: Path, fmt: Optional[str], default_for_empty: str = "dotenv") -> str:
+    """Resolve the format string from an explicit value or the file's suffix."""
+    if fmt is not None:
+        return fmt.lower()
+    suffix = path.suffix.lstrip(".").lower()
+    if suffix in ("", "env"):
+        return default_for_empty
+    return suffix
+
+
 def export_snapshot(snapshot: Snapshot, path: str, fmt: Optional[str] = None) -> str:
     """Write a snapshot to *path* in the requested format.
 
@@ -23,10 +33,7 @@ def export_snapshot(snapshot: Snapshot, path: str, fmt: Optional[str] = None) ->
     Returns the resolved absolute path.
     """
     resolved = Path(path).expanduser().resolve()
-    if fmt is None:
-        fmt = resolved.suffix.lstrip(".").lower()
-        if fmt in ("", "env"):
-            fmt = "dotenv"
+    fmt = _resolve_format(resolved, fmt)
 
     if fmt == "json":
         data = snapshot.to_dict()
@@ -57,9 +64,7 @@ def import_snapshot(
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {resolved}")
 
-    if fmt is None:
-        suffix = resolved.suffix.lstrip(".").lower()
-        fmt = "dotenv" if suffix in ("", "env") else suffix
+    fmt = _resolve_format(resolved, fmt)
 
     if fmt == "json":
         data = json.loads(resolved.read_text(encoding="utf-8"))
