@@ -7,11 +7,16 @@ from envforge.cli import get_store
 from envforge.snapshot_index import build_index
 
 
-def cmd_index_keys(args: argparse.Namespace) -> int:
+def _build_index_from_store(args: argparse.Namespace):
+    """Load all snapshots from the store and return a built index."""
     store = get_store(args)
     names = store.list()
     snaps = [store.get(n) for n in names if store.get(n) is not None]
-    idx = build_index(snaps)  # type: ignore[arg-type]
+    return build_index(snaps)  # type: ignore[arg-type]
+
+
+def cmd_index_keys(args: argparse.Namespace) -> int:
+    idx = _build_index_from_store(args)
     matches = idx.find_by_key(args.pattern)
     if not matches:
         print(f"No snapshots contain a key matching '{args.pattern}'.")
@@ -22,10 +27,7 @@ def cmd_index_keys(args: argparse.Namespace) -> int:
 
 
 def cmd_index_tag(args: argparse.Namespace) -> int:
-    store = get_store(args)
-    names = store.list()
-    snaps = [store.get(n) for n in names if store.get(n) is not None]
-    idx = build_index(snaps)  # type: ignore[arg-type]
+    idx = _build_index_from_store(args)
     matches = idx.find_by_tag(args.tag)
     if not matches:
         print(f"No snapshots tagged '{args.tag}'.")
@@ -36,10 +38,7 @@ def cmd_index_tag(args: argparse.Namespace) -> int:
 
 
 def cmd_index_describe(args: argparse.Namespace) -> int:
-    store = get_store(args)
-    names = store.list()
-    snaps = [store.get(n) for n in names if store.get(n) is not None]
-    idx = build_index(snaps)  # type: ignore[arg-type]
+    idx = _build_index_from_store(args)
     matches = idx.find_by_description(args.substring)
     if not matches:
         print(f"No snapshots whose description contains '{args.substring}'.")
@@ -50,10 +49,7 @@ def cmd_index_describe(args: argparse.Namespace) -> int:
 
 
 def cmd_index_all_keys(args: argparse.Namespace) -> int:
-    store = get_store(args)
-    names = store.list()
-    snaps = [store.get(n) for n in names if store.get(n) is not None]
-    idx = build_index(snaps)  # type: ignore[arg-type]
+    idx = _build_index_from_store(args)
     keys = sorted(idx.all_keys())
     if not keys:
         print("No keys found.")
