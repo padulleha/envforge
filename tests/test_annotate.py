@@ -92,29 +92,43 @@ def test_get_annotations_empty_result():
 # remove_annotations
 # ---------------------------------------------------------------------------
 
-def test_remove_annotations_removes_all_for_name():
-    base = add_annotation([], "prod", "n1")
-    base = add_annotation(base, "prod", "n2")
-    base = add_annotation(base, "dev", "n3")
+def test_remove_annotations_removes_all_for_snapshot():
+    base = add_annotation([], "prod", "note A")
+    base = add_annotation(base, "dev", "note B")
+    base = add_annotation(base, "prod", "note C")
     result = remove_annotations(base, "prod")
+    assert all(a.snapshot_name != "prod" for a in result)
     assert len(result) == 1
     assert result[0].snapshot_name == "dev"
 
 
-def test_remove_annotations_noop_when_missing():
-    base = add_annotation([], "dev", "note")
-    result = remove_annotations(base, "prod")
+def test_remove_annotations_does_not_mutate_original():
+    base = add_annotation([], "prod", "note")
+    remove_annotations(base, "prod")
+    assert len(base) == 1
+
+
+def test_remove_annotations_nonexistent_snapshot_returns_unchanged():
+    base = add_annotation([], "prod", "note")
+    result = remove_annotations(base, "staging")
     assert len(result) == 1
+    assert result[0].snapshot_name == "prod"
 
 
 # ---------------------------------------------------------------------------
-# Serialisation helpers
+# annotations_to_dict / annotations_from_dict
 # ---------------------------------------------------------------------------
 
-def test_annotations_list_roundtrip():
-    base = add_annotation([], "prod", "note1", author="alice")
-    base = add_annotation(base, "dev", "note2")
-    restored = annotations_from_dict(annotations_to_dict(base))
+def test_annotations_roundtrip_serialization():
+    base = add_annotation([], "prod", "note A", author="alice")
+    base = add_annotation(base, "dev", "note B")
+    data = annotations_to_dict(base)
+    restored = annotations_from_dict(data)
     assert len(restored) == 2
-    assert restored[0].note == "note1"
-    assert restored[1].author is None
+    assert restored[0].note == "note A"
+    assert restored[0].author == "alice"
+    assert restored[1].snapshot_name == "dev"
+
+
+def test_annotations_from_dict_empty():
+    assert annotations_from_dict([]) == []
